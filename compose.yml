@@ -1,0 +1,111 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.27
+    container_name: etcd
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - /usr/local/bin/etcd
+      - --name=${ETCD_NAME}
+      - --data-dir=/etcd-data
+      - --initial-advertise-peer-urls=http://${NODE_IP}:2380
+      - --listen-peer-urls=http://${NODE_IP}:2380
+      - --advertise-client-urls=http://${NODE_IP}:2379
+      - --listen-client-urls=http://${NODE_IP}:2379,http://127.0.0.1:2379
+      - --initial-cluster=${ETCD_INITIAL_CLUSTER}
+      - --initial-cluster-state=new
+      - --initial-cluster-token=etcd-spilo
+    volumes:
+      - ${LOCAL_DISK}/etcd-data:/etcd-data
+
+  spilo:
+    image: ghcr.io/zalando/spilo-17:4.0-p3
+    container_name: spilo
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Cluster identity
+      SCOPE: ${SCOPE}
+      PGVERSION: "17"
+
+      # DCS (etcd)
+      ETCD3_HOSTS: ${ETCD3_HOSTS}
+
+      # Patroni API port (Spilo default is 8008, but we set explicitly)
+      APIPORT: "8008"
+
+      # Users (Spilo defaults exist, but set your own)
+      PGUSER_SUPERUSER: "postgres"
+      PGPASSWORD_SUPERUSER: ${PG_SUPERUSER_PASSWORD}
+      PGUSER_ADMIN: "admin"
+      PGPASSWORD_ADMIN: ${PG_ADMIN_PASSWORD}
+      PGUSER_STANDBY: "standby"
+      PGPASSWORD_STANDBY: ${PG_STANDBY_PASSWORD}
+
+      # Backups (Spilo integrates wal-e/wal-g; force WAL-G for S3)
+      USE_WALG_BACKUP: "true"
+      USE_WALG_RESTORE: "true"
+      BACKUP_SCHEDULE: "00 02 * * *"   # daily 02:00
+
+      # WAL-G S3 settings (WALG_S3_PREFIX is required for S3 usage)
+      WALG_S3_PREFIX: ${WALG_S3_PREFIX}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_ENDPOINT: ${AWS_ENDPOINT}
+
+      # Optional: disable SSE if your S3 endpoint doesn’t like it
+      # WALG_DISABLE_S3_SSE: "true"
+
+      # Nice-to-have WAL-G tuning (optional)
+      WALG_COMPRESSION_METHOD: "zstd"
+      WALG_UPLOAD_CONCURRENCY: "4"
+      WALG_DOWNLOAD_CONCURRENCY: "4"
+    volumes:
+      - ${LOCAL_DISK}/spilo-data:/home/postgres/pgdata
+
+  haproxy:
+    image: haproxy:3.3
+    container_name: haproxy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /app/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: node_exporter
+    command:
+      - '--path.rootfs=/host'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres_exporter:${PG_EXPORTER_PASSWORD}@127.0.0.1:5432/postgres?sslmode=disable"
+    depends_on:
+      - spilo
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    network_mode: host
+    environment:
+      HOSTNAME: ${HOSTNAME}
+      NODE_IP: ${NODE_IP}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
+      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME}
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL}
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy.yml:/etc/alloy/config.alloy:ro
+

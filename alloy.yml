@@ -1,0 +1,64 @@
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+prometheus.scrape "node" {
+  job_name = "node"
+
+  targets = [{
+    __address__ = "127.0.0.1:9100",
+    instance    = sys.env("NODE_IP") + ":9100",
+    cluster     = "spilo-prod",
+    node        = sys.env("HOSTNAME"),
+  }]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "postgres" {
+  job_name = "postgres"
+
+  targets = [{
+    __address__ = "127.0.0.1:9187",
+    instance    = sys.env("NODE_IP") + ":9187",
+    cluster     = "spilo-prod",
+    node        = sys.env("HOSTNAME"),
+  }]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "patroni" {
+  job_name     = "patroni"
+  metrics_path = "/metrics"
+
+  targets = [{
+    __address__ = "127.0.0.1:8008",
+    instance    = sys.env("NODE_IP") + ":8008",
+    cluster     = "spilo-prod",
+    node        = sys.env("HOSTNAME"),
+  }]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "etcd" {
+  job_name     = "etcd"
+  metrics_path = "/metrics"
+
+  targets = [{
+    __address__ = "127.0.0.1:2379",
+    instance    = sys.env("NODE_IP") + ":2379",
+    cluster     = "spilo-prod",
+    node        = sys.env("HOSTNAME"),
+  }]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
