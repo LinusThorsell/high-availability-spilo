@@ -15,11 +15,11 @@ You need:
 - three Linux hosts with fixed private IPv4 addresses and reliable time sync;
 - Docker Engine with the Compose v2 plugin on every host;
 - OpenSSL on the workstation used to create the private PKI;
-- an S3 bucket and credentials that can read, write, list, and delete the chosen
-  WAL-G prefix;
-- Grafana Cloud Prometheus remote-write credentials; and
 - an operator workstation that can reach TCP 2379 and 8008 on the database
   hosts.
+
+Normal operation also uses an S3-compatible bucket for WAL-G and Grafana Cloud
+Prometheus remote-write credentials. Both can be omitted for a core-only demo.
 
 The example configuration uses these addresses:
 
@@ -108,9 +108,13 @@ The following values are shared and must match on every node:
 
 - `SCOPE`, `ETCD_INITIAL_CLUSTER`, `ETCD_INITIAL_CLUSTER_TOKEN`,
   `ETCD3_HOSTS`, `ETCD_USERNAME`, and `ETCD_PASSWORD`;
-- all PostgreSQL and Patroni API credentials;
-- the WAL-G settings; and
-- the Grafana Cloud settings.
+- all PostgreSQL and Patroni API credentials.
+
+For normal operation, uncomment and configure the WAL-G and Grafana Cloud
+sections. Set `COMPOSE_PROFILES=monitoring` to include the exporters and Alloy.
+Each integration's settings must match on every node. WAL-G requires credentials
+that can read, write, list, and delete its S3 prefix. Leave these lines commented
+out only for a core-only deployment.
 
 Change `NODE_NAME`, `NODE_IP`, `ETCD_NAME`, `LOCAL_DISK`, and `PKI_DIR` for each
 node. Keep `ETCD_INITIAL_CLUSTER_STATE=new` for the first bootstrap. The setting
@@ -214,7 +218,7 @@ being changed underneath it.
 
 ## 5. Start PostgreSQL and monitoring
 
-After the auth script succeeds, start the full stack on all nodes:
+After the auth script succeeds, start the configured stack on all nodes:
 
 ```bash
 docker compose up --detach
@@ -228,8 +232,14 @@ other two clone from it. Follow startup on each node:
 docker compose logs --follow spilo haproxy
 ```
 
-Create the least-privileged metrics role on the primary. Open `psql` in the
-primary's Spilo container:
+WAL-G remains disabled if its enable flags and S3 settings were omitted. The
+exporters and Alloy remain disabled if `COMPOSE_PROFILES=monitoring` was omitted.
+
+### Grafana Cloud monitoring
+
+Skip this section for a core-only deployment. With the monitoring profile
+enabled, create the least-privileged metrics role on the primary. Open `psql` in
+the primary's Spilo container:
 
 ```bash
 docker exec --interactive --tty spilo psql -U postgres -d postgres
@@ -268,8 +278,8 @@ Check the effective listener addresses on every node:
 sudo ss -lnt | grep -E ':(2379|2380|5432|8008|9100|9187|15432|15433)[[:space:]]'
 ```
 
-Ports 9100 and 9187 must appear only on `127.0.0.1`. Ports 2379, 2380, 5432,
-and 8008 must not bind to a public address.
+When the monitoring profile is enabled, ports 9100 and 9187 must appear only on
+`127.0.0.1`. Ports 2379, 2380, 5432, and 8008 must not bind to a public address.
 
 Check Patroni membership from any Spilo container:
 
@@ -304,8 +314,8 @@ psql 'host=10.0.1.2 port=15433 dbname=app user=app sslmode=require'
 ```
 
 The first connection must reach the primary. The second must reach a replica and
-will be read-only. Verify metrics in Grafana Cloud and check Alloy for delivery
-errors with `docker compose logs alloy`.
+will be read-only. When monitoring is enabled, verify metrics in Grafana Cloud
+and check Alloy for delivery errors with `docker compose logs alloy`.
 
 For switchovers, backups, image updates, certificate rotation, and migration
 guidance, return to the [main README](../README.md#routine-operations).

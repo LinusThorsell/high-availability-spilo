@@ -98,13 +98,13 @@ services:
       PGPASSWORD_STANDBY: ${PG_STANDBY_PASSWORD:?set PG_STANDBY_PASSWORD in .env}
 
       # WAL-G backups
-      USE_WALG_BACKUP: "true"
-      USE_WALG_RESTORE: "true"
-      BACKUP_SCHEDULE: "00 02 * * *"
-      WALG_S3_PREFIX: ${WALG_S3_PREFIX:?set WALG_S3_PREFIX in .env}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
-      AWS_REGION: ${AWS_REGION:?set AWS_REGION in .env}
+      USE_WALG_BACKUP: ${USE_WALG_BACKUP:-false}
+      USE_WALG_RESTORE: ${USE_WALG_RESTORE:-false}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-00 02 * * *}
+      WALG_S3_PREFIX: ${WALG_S3_PREFIX:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-}
       AWS_ENDPOINT: ${AWS_ENDPOINT:-}
       WALG_COMPRESSION_METHOD: zstd
       WALG_UPLOAD_CONCURRENCY: "4"
@@ -129,6 +129,8 @@ services:
       - no-new-privileges:true
 
   node_exporter:
+    profiles:
+      - monitoring
     image: quay.io/prometheus/node-exporter:v1.11.1@sha256:0f422f62c15f154af8d8572b23d623aebfb10cec73a5c654d18f911f3f9df241
     container_name: node_exporter
     command:
@@ -146,6 +148,8 @@ services:
       - /:/host:ro,rslave
 
   postgres_exporter:
+    profiles:
+      - monitoring
     image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     container_name: postgres_exporter
     command:
@@ -160,11 +164,13 @@ services:
     environment:
       DATA_SOURCE_URI: 127.0.0.1:5432/postgres?sslmode=require
       DATA_SOURCE_USER: postgres_exporter
-      DATA_SOURCE_PASS: ${PG_EXPORTER_PASSWORD:?set PG_EXPORTER_PASSWORD in .env}
+      DATA_SOURCE_PASS: ${PG_EXPORTER_PASSWORD:-}
     depends_on:
       - spilo
 
   alloy:
+    profiles:
+      - monitoring
     image: grafana/alloy:v1.19.2@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839
     container_name: alloy
     restart: unless-stopped
@@ -178,9 +184,9 @@ services:
       HOSTNAME: ${NODE_NAME}
       NODE_IP: ${NODE_IP}
       SCOPE: ${SCOPE}
-      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:?set GRAFANA_CLOUD_API_KEY in .env}
-      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME:?set GRAFANA_CLOUD_PROMETHEUS_USERNAME in .env}
-      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:?set GRAFANA_CLOUD_PROMETHEUS_URL in .env}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:-}
+      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME:-}
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
     command:
       - run
       - --storage.path=/var/lib/alloy/data

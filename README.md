@@ -2,8 +2,10 @@
 
 This repository runs a three-node PostgreSQL 17 cluster on three Linux hosts.
 Spilo packages PostgreSQL and Patroni, etcd provides the distributed consensus
-store, and HAProxy gives applications stable read/write endpoints. Grafana Alloy
-ships local node, PostgreSQL, Patroni, and etcd metrics to Grafana Cloud.
+store, and HAProxy gives applications stable read/write endpoints. WAL-G backs
+up to S3-compatible storage, and Grafana Alloy ships local node, PostgreSQL,
+Patroni, and etcd metrics to Grafana Cloud. Both integrations can be omitted for
+a core-only deployment.
 
 This is a host-networked deployment. It is deliberately explicit about node
 addresses, TLS identities, firewall rules, and bootstrap order. It is intended
@@ -89,11 +91,12 @@ Confirm the new primary through HAProxy before taking the old primary down.
 
 ### Backups
 
-WAL-G runs a base backup daily at 02:00 and continuously archives WAL. A green
-backup job is not proof of recoverability. Monitor failed uploads, retention, and
-bucket capacity, and perform scheduled restores into an isolated cluster using
-new `SCOPE`, etcd, and data directories. Record the recovery point and restore
-duration.
+When enabled, WAL-G runs a base backup on `BACKUP_SCHEDULE` and continuously
+archives WAL. A green backup job is not proof of recoverability. Monitor failed
+uploads, retention, and bucket capacity, and perform scheduled restores into an
+isolated cluster using new `SCOPE`, etcd, and data directories. Record the
+recovery point and restore duration. WAL-G is disabled when its optional
+environment settings are omitted.
 
 ### Image updates
 
@@ -115,18 +118,20 @@ Do not replace a digest with `latest` or with a version tag alone.
 Issue replacement node and client certificates from the offline CA before the
 825-day leaf lifetime expires. Keep the same SANs and client common names. Rotate
 one node at a time and confirm etcd peer health, Patroni membership, HAProxy
-health, and Alloy scrapes after each restart. CA rotation requires an overlap
-period in which clients and servers trust both roots; plan it separately.
+health, and, when enabled, Alloy scrapes after each restart. CA rotation requires
+an overlap period in which clients and servers trust both roots; plan it
+separately.
 
 ## Existing plaintext deployments
 
 These bootstrap instructions are for a new cluster. Do not point the hardened
 Compose file at a running plaintext etcd cluster and restart all three members.
 Peer URLs are part of etcd membership, and an all-at-once protocol change can
-destroy quorum. Take an etcd snapshot and a verified PostgreSQL/WAL-G backup,
-then use a documented one-member-at-a-time etcd migration or build a new secured
-cluster and restore into it. Treat a production migration as its own change plan
-with a tested rollback.
+destroy quorum. Take an etcd snapshot and a verified PostgreSQL backup—WAL-G
+when enabled, or another method when disabled—then use a documented
+one-member-at-a-time etcd migration or build a new secured cluster and restore
+into it. Treat a production migration as its own change plan with a tested
+rollback.
 
 ## Configuration references
 
