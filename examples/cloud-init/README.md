@@ -116,6 +116,7 @@ Check that initialization completed:
 ```bash
 cloud-init status --wait
 docker compose version
+docker info
 findmnt -no PROPAGATION /
 ```
 
