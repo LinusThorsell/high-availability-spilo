@@ -1,5 +1,6 @@
 .env
 auth.env
+firewall.nft
 pki/
 *.key
 *.csr

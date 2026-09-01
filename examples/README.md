@@ -30,7 +30,7 @@ The example configuration uses these addresses:
 | `n3` | `10.0.1.4` |
 
 Replace them consistently in `.env`, `haproxy.cfg`, and
-`firewall.nft.example`. Certificates contain the node IP as a subject
+`firewall.nft`. Certificates contain the node IP as a subject
 alternative name, so changing an address also requires issuing a new node
 certificate.
 
@@ -131,21 +131,55 @@ Do not put either directory on ephemeral storage.
 
 ## 3. Apply the network restrictions
 
-Edit the three address sets in `firewall.nft.example`. Keep the Patroni operator
-set narrow—normally the exact address of a bastion or operator workstation—and
-put the same address or CIDR in `PATRONI_API_ALLOWLIST`.
-
-Validate the file before applying it:
+Create the local ruleset from the example:
 
 ```bash
-sudo nft --check --file firewall.nft.example
-sudo nft --file firewall.nft.example
+cp firewall.nft.example firewall.nft
 ```
 
-Persist the table using the host distribution's nftables mechanism. The example
-has an `accept` policy and filters only this stack's ports, but it should still be
-reviewed alongside the host's existing firewall. Cloud firewalls or security
-groups should enforce the same source matrix.
+Edit the three address sets in `firewall.nft`. Keep the Patroni operator set
+narrow—normally the exact address of a bastion or operator workstation—and put
+the same address or CIDR in `PATRONI_API_ALLOWLIST`.
+
+When running operator commands from a host attached to libvirt's default NAT
+network, use the host's bridge address as a `/32`. For the usual
+`192.168.122.0/24` network:
+
+```dotenv
+PATRONI_API_ALLOWLIST=192.168.122.1/32
+```
+
+You can confirm that address with
+`virsh --connect qemu:///system net-dumpxml default`.
+
+On hosts other than the Alpine example nodes, validate and apply the file with:
+
+```bash
+sudo nft --check --file firewall.nft
+sudo nft --file firewall.nft
+```
+
+On a fresh Alpine demo node prepared by the cloud-init example, install this
+file as the complete persistent ruleset instead. Run these commands from the
+repository root on each node:
+
+```bash
+doas nft --check --file ./firewall.nft && \
+  doas install -m 0600 ./firewall.nft /etc/nftables.nft && \
+  doas nft --file /etc/nftables.nft
+doas rc-update add nftables boot
+doas nft list table inet high_availability_spilo
+```
+
+Keep the current SSH session open and confirm that a second SSH connection
+works before disconnecting. This replaces Alpine's stock ruleset, which would
+otherwise block incoming connections by default.
+
+On other host distributions, persist the table using that distribution's
+nftables mechanism. The example has an `accept` policy and filters only this
+stack's ports, but it should still be reviewed alongside the host's existing
+firewall. Cloud firewalls or security groups should enforce the same source
+matrix.
 
 ## 4. Start etcd and enable RBAC
 
