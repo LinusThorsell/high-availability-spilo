@@ -1,111 +1,193 @@
 services:
   etcd:
-    image: quay.io/coreos/etcd:v3.5.27
+    image: quay.io/coreos/etcd:v3.5.27@sha256:88281a073b5965756b7690539e689fa1d8aa988b184b4f575280f4a81eb85f8c
     container_name: etcd
+    hostname: ${NODE_NAME:?set NODE_NAME in .env}
     restart: unless-stopped
     network_mode: host
     command:
       - /usr/local/bin/etcd
-      - --name=${ETCD_NAME}
+      - --name=${ETCD_NAME:?set ETCD_NAME in .env}
       - --data-dir=/etcd-data
-      - --initial-advertise-peer-urls=http://${NODE_IP}:2380
-      - --listen-peer-urls=http://${NODE_IP}:2380
-      - --advertise-client-urls=http://${NODE_IP}:2379
-      - --listen-client-urls=http://${NODE_IP}:2379,http://127.0.0.1:2379
-      - --initial-cluster=${ETCD_INITIAL_CLUSTER}
-      - --initial-cluster-state=new
-      - --initial-cluster-token=etcd-spilo
+      - --initial-advertise-peer-urls=https://${NODE_IP:?set NODE_IP in .env}:2380
+      - --listen-peer-urls=https://${NODE_IP}:2380
+      - --advertise-client-urls=https://${NODE_IP}:2379
+      - --listen-client-urls=https://${NODE_IP}:2379,https://127.0.0.1:2379
+      - --initial-cluster=${ETCD_INITIAL_CLUSTER:?set ETCD_INITIAL_CLUSTER in .env}
+      - --initial-cluster-state=${ETCD_INITIAL_CLUSTER_STATE:-new}
+      - --initial-cluster-token=${ETCD_INITIAL_CLUSTER_TOKEN:?set ETCD_INITIAL_CLUSTER_TOKEN in .env}
+      - --cert-file=/etc/etcd/pki/node.crt
+      - --key-file=/etc/etcd/pki/node.key
+      - --trusted-ca-file=/etc/etcd/pki/ca.crt
+      - --client-cert-auth=true
+      - --peer-cert-file=/etc/etcd/pki/node.crt
+      - --peer-key-file=/etc/etcd/pki/node.key
+      - --peer-trusted-ca-file=/etc/etcd/pki/ca.crt
+      - --peer-client-cert-auth=true
+      - --tls-min-version=TLS1.2
     volumes:
-      - ${LOCAL_DISK}/etcd-data:/etcd-data
+      - ${LOCAL_DISK:?set LOCAL_DISK in .env}/etcd-data:/etcd-data
+      - ${PKI_DIR:?set PKI_DIR in .env}/ca.crt:/etc/etcd/pki/ca.crt:ro
+      - ${PKI_DIR}/node.crt:/etc/etcd/pki/node.crt:ro
+      - ${PKI_DIR}/node.key:/etc/etcd/pki/node.key:ro
+    security_opt:
+      - no-new-privileges:true
 
   spilo:
-    image: ghcr.io/zalando/spilo-17:4.0-p3
+    image: ghcr.io/zalando/spilo-17:4.0-p3@sha256:b7db9e8f62e809ebd9a0679fbdba147a811fdd240ab78380ea4720a46a017184
     container_name: spilo
+    hostname: ${NODE_NAME}
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      - etcd
     environment:
       # Cluster identity
-      SCOPE: ${SCOPE}
+      SPILO_PROVIDER: local
+      SCOPE: ${SCOPE:?set SCOPE in .env}
       PGVERSION: "17"
 
-      # DCS (etcd)
-      ETCD3_HOSTS: ${ETCD3_HOSTS}
-
-      # Patroni API port (Spilo default is 8008, but we set explicitly)
+      # Patroni API address
       APIPORT: "8008"
+      RESTAPI_CONNECT_ADDRESS: ${NODE_IP}
 
-      # Users (Spilo defaults exist, but set your own)
-      PGUSER_SUPERUSER: "postgres"
-      PGPASSWORD_SUPERUSER: ${PG_SUPERUSER_PASSWORD}
-      PGUSER_ADMIN: "admin"
-      PGPASSWORD_ADMIN: ${PG_ADMIN_PASSWORD}
-      PGUSER_STANDBY: "standby"
-      PGPASSWORD_STANDBY: ${PG_STANDBY_PASSWORD}
+      # Spilo merges this document into the generated Patroni configuration.
+      # etcd requires both a trusted client certificate and scoped RBAC credentials.
+      SPILO_CONFIGURATION: |
+        etcd3:
+          hosts: ${ETCD3_HOSTS:?set ETCD3_HOSTS in .env}
+          protocol: https
+          cacert: /run/pki/ca.crt
+          cert: /run/pki/patroni.crt
+          key: /run/pki/patroni.key
+          username: ${ETCD_USERNAME:-patroni}
+          password: ${ETCD_PASSWORD:?set ETCD_PASSWORD in .env}
+        restapi:
+          listen: ${NODE_IP}:8008
+          connect_address: ${NODE_IP}:8008
+          cafile: /run/pki/ca.crt
+          certfile: /run/pki/node.crt
+          keyfile: /run/pki/node.key
+          authentication:
+            username: ${PATRONI_API_USERNAME:?set PATRONI_API_USERNAME in .env}
+            password: ${PATRONI_API_PASSWORD:?set PATRONI_API_PASSWORD in .env}
+          allowlist:
+            - 127.0.0.1/32
+            - ${PATRONI_API_ALLOWLIST:?set PATRONI_API_ALLOWLIST in .env}
+          allowlist_include_members: true
+          verify_client: optional
+          server_tokens: ProductOnly
+        ctl:
+          authentication:
+            username: ${PATRONI_API_USERNAME}
+            password: ${PATRONI_API_PASSWORD}
+          cacert: /run/pki/ca.crt
+          certfile: /run/pki/patroni.crt
+          keyfile: /run/pki/patroni.key
+        postgresql:
+          listen: ${NODE_IP},127.0.0.1:5432
+          connect_address: ${NODE_IP}:5432
 
-      # Backups (Spilo integrates wal-e/wal-g; force WAL-G for S3)
+      # Database users
+      PGUSER_SUPERUSER: postgres
+      PGPASSWORD_SUPERUSER: ${PG_SUPERUSER_PASSWORD:?set PG_SUPERUSER_PASSWORD in .env}
+      PGUSER_ADMIN: admin
+      PGPASSWORD_ADMIN: ${PG_ADMIN_PASSWORD:?set PG_ADMIN_PASSWORD in .env}
+      USE_ADMIN: "true"
+      PGUSER_STANDBY: standby
+      PGPASSWORD_STANDBY: ${PG_STANDBY_PASSWORD:?set PG_STANDBY_PASSWORD in .env}
+
+      # WAL-G backups
       USE_WALG_BACKUP: "true"
       USE_WALG_RESTORE: "true"
-      BACKUP_SCHEDULE: "00 02 * * *"   # daily 02:00
-
-      # WAL-G S3 settings (WALG_S3_PREFIX is required for S3 usage)
-      WALG_S3_PREFIX: ${WALG_S3_PREFIX}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_REGION: ${AWS_REGION}
-      AWS_ENDPOINT: ${AWS_ENDPOINT}
-
-      # Optional: disable SSE if your S3 endpoint doesn’t like it
-      # WALG_DISABLE_S3_SSE: "true"
-
-      # Nice-to-have WAL-G tuning (optional)
-      WALG_COMPRESSION_METHOD: "zstd"
+      BACKUP_SCHEDULE: "00 02 * * *"
+      WALG_S3_PREFIX: ${WALG_S3_PREFIX:?set WALG_S3_PREFIX in .env}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
+      AWS_REGION: ${AWS_REGION:?set AWS_REGION in .env}
+      AWS_ENDPOINT: ${AWS_ENDPOINT:-}
+      WALG_COMPRESSION_METHOD: zstd
       WALG_UPLOAD_CONCURRENCY: "4"
       WALG_DOWNLOAD_CONCURRENCY: "4"
     volumes:
       - ${LOCAL_DISK}/spilo-data:/home/postgres/pgdata
+      - ${PKI_DIR}/ca.crt:/run/pki/ca.crt:ro
+      - ${PKI_DIR}/node.crt:/run/pki/node.crt:ro
+      - ${PKI_DIR}/node.key:/run/pki/node.key:ro
+      - ${PKI_DIR}/patroni.crt:/run/pki/patroni.crt:ro
+      - ${PKI_DIR}/patroni.key:/run/pki/patroni.key:ro
 
   haproxy:
-    image: haproxy:3.3
+    image: haproxy:3.3@sha256:f8095d0b91414340dbcd53bbe89585e17f333ec1f2a0f60456cb53a90486ece2
     container_name: haproxy
     restart: unless-stopped
     network_mode: host
     volumes:
-      - /app/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ${PKI_DIR}/ca.crt:/etc/haproxy/pki/ca.crt:ro
+    security_opt:
+      - no-new-privileges:true
 
   node_exporter:
-    image: quay.io/prometheus/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:v1.11.1@sha256:0f422f62c15f154af8d8572b23d623aebfb10cec73a5c654d18f911f3f9df241
     container_name: node_exporter
     command:
-      - '--path.rootfs=/host'
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:9100
     network_mode: host
     pid: host
     restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
-      - '/:/host:ro,rslave'
+      - /:/host:ro,rslave
 
   postgres_exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     container_name: postgres_exporter
+    command:
+      - --web.listen-address=127.0.0.1:9187
     restart: unless-stopped
     network_mode: host
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres_exporter:${PG_EXPORTER_PASSWORD}@127.0.0.1:5432/postgres?sslmode=disable"
+      DATA_SOURCE_URI: 127.0.0.1:5432/postgres?sslmode=require
+      DATA_SOURCE_USER: postgres_exporter
+      DATA_SOURCE_PASS: ${PG_EXPORTER_PASSWORD:?set PG_EXPORTER_PASSWORD in .env}
     depends_on:
       - spilo
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.19.2@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839
     container_name: alloy
+    restart: unless-stopped
     network_mode: host
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
-      HOSTNAME: ${HOSTNAME}
+      HOSTNAME: ${NODE_NAME}
       NODE_IP: ${NODE_IP}
-      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
-      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME}
-      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL}
+      SCOPE: ${SCOPE}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:?set GRAFANA_CLOUD_API_KEY in .env}
+      GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME:?set GRAFANA_CLOUD_PROMETHEUS_USERNAME in .env}
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:?set GRAFANA_CLOUD_PROMETHEUS_URL in .env}
     command:
       - run
+      - --storage.path=/var/lib/alloy/data
       - /etc/alloy/config.alloy
     volumes:
       - ./alloy.yml:/etc/alloy/config.alloy:ro
-
+      - ${LOCAL_DISK}/alloy-data:/var/lib/alloy/data
+      - ${PKI_DIR}/ca.crt:/etc/alloy/pki/ca.crt:ro
+      - ${PKI_DIR}/monitoring.crt:/etc/alloy/pki/monitoring.crt:ro
+      - ${PKI_DIR}/monitoring.key:/etc/alloy/pki/monitoring.key:ro

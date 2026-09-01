@@ -15,7 +15,7 @@ prometheus.scrape "node" {
   targets = [{
     __address__ = "127.0.0.1:9100",
     instance    = sys.env("NODE_IP") + ":9100",
-    cluster     = "spilo-prod",
+    cluster     = sys.env("SCOPE"),
     node        = sys.env("HOSTNAME"),
   }]
 
@@ -28,7 +28,7 @@ prometheus.scrape "postgres" {
   targets = [{
     __address__ = "127.0.0.1:9187",
     instance    = sys.env("NODE_IP") + ":9187",
-    cluster     = "spilo-prod",
+    cluster     = sys.env("SCOPE"),
     node        = sys.env("HOSTNAME"),
   }]
 
@@ -40,11 +40,20 @@ prometheus.scrape "patroni" {
   metrics_path = "/metrics"
 
   targets = [{
-    __address__ = "127.0.0.1:8008",
+    __address__ = sys.env("NODE_IP") + ":8008",
     instance    = sys.env("NODE_IP") + ":8008",
-    cluster     = "spilo-prod",
+    cluster     = sys.env("SCOPE"),
     node        = sys.env("HOSTNAME"),
   }]
+
+  scheme = "https"
+
+  tls_config {
+    ca_file     = "/etc/alloy/pki/ca.crt"
+    cert_file   = "/etc/alloy/pki/monitoring.crt"
+    key_file    = "/etc/alloy/pki/monitoring.key"
+    server_name = sys.env("NODE_IP")
+  }
 
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
@@ -54,11 +63,20 @@ prometheus.scrape "etcd" {
   metrics_path = "/metrics"
 
   targets = [{
-    __address__ = "127.0.0.1:2379",
+    __address__ = sys.env("NODE_IP") + ":2379",
     instance    = sys.env("NODE_IP") + ":2379",
-    cluster     = "spilo-prod",
+    cluster     = sys.env("SCOPE"),
     node        = sys.env("HOSTNAME"),
   }]
+
+  scheme = "https"
+
+  tls_config {
+    ca_file     = "/etc/alloy/pki/ca.crt"
+    cert_file   = "/etc/alloy/pki/monitoring.crt"
+    key_file    = "/etc/alloy/pki/monitoring.key"
+    server_name = sys.env("NODE_IP")
+  }
 
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 }
