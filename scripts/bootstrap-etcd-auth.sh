@@ -47,7 +47,6 @@ set +a
 for variable in SCOPE ETCD_ENDPOINTS ETCD_USERNAME ETCD_PASSWORD ETCD_ROOT_PASSWORD; do
   [[ -n ${!variable:-} ]] || die "$variable is empty or unset in $auth_env_file"
 done
-[[ $ETCD_USERNAME == patroni ]] || die 'ETCD_USERNAME must be patroni to match the client certificate identity'
 [[ $SCOPE =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die 'SCOPE contains unsupported characters'
 
 etcdctl() {

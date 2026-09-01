@@ -59,7 +59,7 @@ The script refuses to overwrite an existing directory. It creates:
     └── n3/
         ├── ca.crt
         ├── node.crt/key           # etcd peer/server and Patroni HTTPS server
-        ├── patroni.crt/key        # Patroni client identity for etcd and patronictl
+        ├── patroni.crt/key        # mTLS client certificate for etcd and patronictl
         └── monitoring.crt/key      # Alloy client identity
 ```
 

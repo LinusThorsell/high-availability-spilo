@@ -42,13 +42,15 @@ make_key() {
 
 sign_certificate() {
   local common_name=$1 key=$2 certificate=$3 usage=$4 san=${5:-}
-  local csr extension_file
+  local csr extension_file subject
 
   csr=$(mktemp "$scratch_dir/request.XXXXXX.csr")
   extension_file=$(mktemp "$scratch_dir/extensions.XXXXXX.cnf")
+  subject='/O=high-availability-spilo'
+  [[ -z $common_name ]] || subject+="/CN=$common_name"
 
   openssl req -new -sha256 -key "$key" -out "$csr" \
-    -subj "/O=high-availability-spilo/CN=$common_name"
+    -subj "$subject"
 
   {
     printf '%s\n' 'basicConstraints=critical,CA:FALSE'
@@ -152,7 +154,10 @@ for index in "${!node_names[@]}"; do
     "DNS:$name,DNS:localhost,IP:$ip,IP:127.0.0.1"
 
   make_key "$node_dir/patroni.key"
-  sign_certificate patroni \
+  # Patroni uses etcd's gRPC gateway, which rejects client certificates that
+  # contain a Common Name. The certificate still provides mTLS while etcd
+  # username/password authentication supplies its RBAC identity.
+  sign_certificate '' \
     "$node_dir/patroni.key" \
     "$node_dir/patroni.crt" \
     clientAuth
