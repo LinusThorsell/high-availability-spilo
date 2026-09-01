@@ -1,0 +1,64 @@
+#cloud-config
+
+hostname: n1
+manage_etc_hosts: true
+timezone: Europe/Stockholm
+
+users:
+  - default
+
+ssh_authorized_keys:
+  - ssh-ed25519 REPLACE_WITH_YOUR_PUBLIC_KEY
+
+disable_root: true
+ssh_pwauth: false
+
+apk_repos:
+  alpine_repo:
+    base_url: https://dl-cdn.alpinelinux.org/alpine
+    community_enabled: true
+    testing_enabled: false
+    version: v3.24
+
+package_update: true
+packages:
+  - bash
+  - chrony
+  - coreutils
+  - curl
+  - doas
+  - docker
+  - docker-cli-compose
+  - git
+  - nftables
+  - nftables-openrc
+  - openssl
+  - qemu-guest-agent
+  - rsync
+  - util-linux
+
+write_files:
+  - path: /etc/doas.d/alpine.conf
+    permissions: "0600"
+    content: |
+      permit nopass alpine as root
+
+  - path: /etc/local.d/mount-rshared.start
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      mount --make-rshared /
+
+runcmd:
+  - addgroup alpine docker
+  - rc-update add chronyd default
+  - rc-update add docker default
+  - rc-update add local default
+  - rc-update add qemu-guest-agent default
+  - mount --make-rshared /
+  - install -d -m 0700 /etc/high-availability-spilo/pki
+  - install -d -m 0750 /var/lib/high-availability-spilo/etcd-data
+  - install -d -m 0750 /var/lib/high-availability-spilo/spilo-data
+  - install -d -m 0750 /var/lib/high-availability-spilo/alloy-data
+
+final_message: "Alpine Spilo demo node is ready"
