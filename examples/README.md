@@ -121,13 +121,15 @@ node. Keep `ETCD_INITIAL_CLUSTER_STATE=new` for the first bootstrap. The setting
 is ignored once an etcd data directory has been initialized; adding or replacing
 a member later uses the etcd member-add procedure and `existing` state.
 
-Prepare the persistent directories:
+Prepare the persistent directories. The pinned Spilo image runs PostgreSQL as
+UID 101 and GID 103:
 
 ```bash
 sudo install -d -m 0750 \
   /var/lib/high-availability-spilo/etcd-data \
-  /var/lib/high-availability-spilo/spilo-data \
   /var/lib/high-availability-spilo/alloy-data
+sudo install -d -o 101 -g 103 -m 0750 \
+  /var/lib/high-availability-spilo/spilo-data
 ```
 
 Do not reuse an `etcd-data` or `spilo-data` directory from a different cluster.

@@ -61,7 +61,7 @@ runcmd:
   - mount --make-rshared /
   - install -d -m 0700 /etc/high-availability-spilo/pki
   - install -d -m 0750 /var/lib/high-availability-spilo/etcd-data
-  - install -d -m 0750 /var/lib/high-availability-spilo/spilo-data
+  - install -d -o 101 -g 103 -m 0750 /var/lib/high-availability-spilo/spilo-data
   - install -d -m 0750 /var/lib/high-availability-spilo/alloy-data
 
 final_message: "Alpine Spilo demo node is ready"
