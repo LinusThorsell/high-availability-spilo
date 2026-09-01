@@ -91,9 +91,6 @@ services:
       # Database users
       PGUSER_SUPERUSER: postgres
       PGPASSWORD_SUPERUSER: ${PG_SUPERUSER_PASSWORD:?set PG_SUPERUSER_PASSWORD in .env}
-      PGUSER_ADMIN: admin
-      PGPASSWORD_ADMIN: ${PG_ADMIN_PASSWORD:?set PG_ADMIN_PASSWORD in .env}
-      USE_ADMIN: "true"
       PGUSER_STANDBY: standby
       PGPASSWORD_STANDBY: ${PG_STANDBY_PASSWORD:?set PG_STANDBY_PASSWORD in .env}
 
