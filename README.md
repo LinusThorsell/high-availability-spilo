@@ -115,12 +115,28 @@ Do not replace a digest with `latest` or with a version tag alone.
 
 ### Certificate rotation
 
-Issue replacement node and client certificates from the offline CA before the
-825-day leaf lifetime expires. Keep the same SANs and client common names. Rotate
-one node at a time and confirm etcd peer health, Patroni membership, HAProxy
-health, and, when enabled, Alloy scrapes after each restart. CA rotation requires
-an overlap period in which clients and servers trust both roots; plan it
-separately.
+Leaf certificates last 825 days; the CA lasts 3,650 days. Rotation is
+operator-driven because the CA remains offline.
+
+For routine renewal under the existing CA, follow the
+[leaf-certificate rotation playbook](playbooks/leaf-certificate-rotation.md).
+It covers issuance, validation, one-node-at-a-time rollout, and
+[rollback](playbooks/leaf-certificate-rollback.md).
+
+Use the expiry checker from cron or monitoring. It exits `1` at the warning
+threshold, `2` at the critical threshold, and `3` for invalid input:
+
+```bash
+./scripts/check-cert-expiry.sh --warning-days 90 --critical-days 30 \
+  /etc/high-availability-spilo/pki
+```
+
+Changing a node name or address requires a newly issued node certificate. CA
+rotation uses a three-pass rollover: trust both roots, replace every leaf, then
+remove the old root. Follow the [planned CA rotation playbook](playbooks/ca-rotation.md);
+start before the CA enters its final 825 days. The scripts validate each
+transition and keep per-node rollback bundles. A compromised leaf still needs a
+separate response because this stack does not configure certificate revocation.
 
 ## Existing plaintext deployments
 

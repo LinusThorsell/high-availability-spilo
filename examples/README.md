@@ -14,7 +14,8 @@ You need:
 
 - three Linux hosts with fixed private IPv4 addresses and reliable time sync;
 - Docker Engine with the Compose v2 plugin on every host;
-- OpenSSL on the workstation used to create the private PKI;
+- Bash, `curl`, and OpenSSL on every host when using the rotation helpers;
+- Bash and OpenSSL on the workstation used to create the private PKI;
 - an operator workstation that can reach TCP 2379 and 8008 on the database
   hosts.
 
@@ -71,7 +72,8 @@ Copy only the matching node directory to the SSH user's home directory. For
 example, from the operator workstation for `n1`:
 
 ```bash
-scp -r /secure/spilo-pki/nodes/n1 alpine@10.0.1.2:
+ssh alpine@10.0.1.2 'install -d -m 0700 ~/n1'
+scp /secure/spilo-pki/nodes/n1/* alpine@10.0.1.2:n1/
 ssh alpine@10.0.1.2
 ```
 
